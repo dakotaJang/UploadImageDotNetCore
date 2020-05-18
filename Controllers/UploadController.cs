@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using UploadImageDotNetCore.Helpers;
 
 namespace UploadImageDotNetCore.Controllers
 {
@@ -45,28 +46,35 @@ namespace UploadImageDotNetCore.Controllers
             }
 
             // prevent too many file upload
-            int expectedFileCount = Directory.GetFiles(UPLOADING_DIRECTORY).Length + files.Count;
+            int currentFileCount = Directory.GetFiles(UPLOADING_DIRECTORY).Length;
+            int expectedFileCount = currentFileCount + files.Count;
             if (expectedFileCount > _MAX_FILE_CAPACITY) {
-                return Conflict(new { error = "reached maximum file capacity"});
+                return Conflict(new { currentFileCount, error = "reached maximum file capacity", _MAX_FILE_CAPACITY});
             }
 
+            int uploadCount = 0;
+            int failToUploadCount = 0;
             foreach (var formFile in files)
             {
-                if (formFile.Length > 0)
+                bool validFile = FileValidation.ValidateImageFile(formFile);
+                if (validFile)
                 {
                     var filePath = Path.Join(UPLOADING_DIRECTORY, formFile.FileName);
-
                     using (var stream = System.IO.File.Create(filePath))
                     {
                         await formFile.CopyToAsync(stream);
                     }
+                    uploadCount++;
+                } else {
+                    failToUploadCount++;
                 }
             }
 
-            // Process uploaded files
-            // Don't rely on or trust the FileName property without validation.
-
-            return Ok(new { count = files.Count, size });
+            if (failToUploadCount > 0) {
+                return Conflict(new { failToUploadCount, _MAX_FILE_CAPACITY, uploadCount, size });
+            } else {
+                return Ok(new { _MAX_FILE_CAPACITY, uploadCount, size });
+            }
         }
     }
 }
